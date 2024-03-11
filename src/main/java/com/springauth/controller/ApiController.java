@@ -10,4 +10,9 @@ public class ApiController {
     public String hello() {
         return "Hello, secured API!";
     }
+    
+    @GetMapping("/bye")
+    public String bye() {
+        return "Bye, secured API!";
+    }
 }

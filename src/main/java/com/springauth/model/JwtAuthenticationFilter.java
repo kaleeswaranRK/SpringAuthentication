@@ -18,18 +18,21 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
+import com.springauth.service.JwtTokenUtil;
+
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
 	private final AuthenticationManager authenticationManager;
 	private final UserDetailsService userDetailsService;
+	private final JwtTokenUtil jwtTokenUtil;
 
-	public JwtAuthenticationFilter(AuthenticationManager authenticationManager, UserDetailsService userDetailsService) {
+	public JwtAuthenticationFilter(AuthenticationManager authenticationManager, UserDetailsService userDetailsService,
+			JwtTokenUtil jwtTokenUtil) {
 		this.authenticationManager = authenticationManager;
 		this.userDetailsService = userDetailsService;
+		this.jwtTokenUtil = jwtTokenUtil;
 	}
 
 	@Override
@@ -46,12 +49,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 		String token = header.replace("Bearer ", "");
 
 		try {
-			Claims claims = Jwts.parser().setSigningKey("sectre") // Set your secret key here
-					.parseClaimsJws(token).getBody();
-
-			String username = claims.getSubject();
+			// Extract username from token
+			String username = jwtTokenUtil.extractUsername(token);
 
 			if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+				// Verify token expiration
+				if (!jwtTokenUtil.validateToken(token, userDetailsService.loadUserByUsername(username))) {
+					// Token is not valid or expired
+					response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+					return;
+				}
+
+				// Token is valid, continue with authentication
 				UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
 				if (userDetails != null && userDetails.isEnabled()) {
@@ -62,9 +71,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 				}
 			}
 		} catch (Exception e) {
-			System.out.println(e);
+			// Handle exceptions
+			logger.error("Error processing authentication token: " + e.getMessage());
+			// You can send an appropriate HTTP response or log a message
+			response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
 		}
 
 		filterChain.doFilter(request, response);
 	}
+
 }
